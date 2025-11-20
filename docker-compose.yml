@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: netdata-aggregator-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ALERT_POLL_INTERVAL=${ALERT_POLL_INTERVAL:-15}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-5}
+      - ENVIRONMENT=production
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    networks:
+      - netdata-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: netdata-aggregator-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - netdata-network
+
+networks:
+  netdata-network:
+    driver: bridge
