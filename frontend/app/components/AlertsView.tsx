@@ -85,7 +85,7 @@ export default function AlertsView() {
       <aside className="w-full bg-netdata-bg rounded-2xl border border-netdata-border p-3 flex flex-col overflow-hidden">
         <div className="mb-2">
           <div className="text-sm font-medium text-netdata-text-muted mb-2">
-            Алерты (по важности)
+            Alerts (by severity)
           </div>
           <div className="flex gap-4 text-sm mb-2">
             <span className="text-netdata-critical">

@@ -34,14 +34,14 @@ export default function HostsSidebar({ hosts, selectedHost, onSelectHost }: Host
 
   return (
     <aside className="w-[280px] min-w-[240px] max-w-[320px] bg-netdata-bg rounded-2xl border border-netdata-border p-3 flex flex-col">
-      <div className="text-sm font-medium mb-2 text-netdata-text-muted">Хосты</div>
+      <div className="text-sm font-medium mb-2 text-netdata-text-muted">Hosts</div>
 
       <div className="mb-2">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Фильтр по hostname"
+          placeholder="Filter by hostname"
           className="w-full px-2.5 py-1.5 rounded-full border border-netdata-border-dark bg-netdata-bg text-netdata-text-primary text-sm outline-none placeholder:text-netdata-text-dim"
         />
       </div>
