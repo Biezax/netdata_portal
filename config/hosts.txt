@@ -1,0 +1,12 @@
+# Netdata Hosts Configuration
+# Each line should contain a full URL (scheme + host + port)
+# Lines starting with # are comments and will be ignored
+# Empty lines and whitespace are ignored
+
+# Example: Production servers
+# http://prod-server-01:19999
+# http://prod-server-02:19999
+# https://prod-server-03:19999
+
+# Default: local Netdata instance
+http://localhost:19999

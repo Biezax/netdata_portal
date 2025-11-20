@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js/TypeScript
+node_modules/
+.next/
+out/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.turbo/
+
+# Environment & Config
+.env
+.env.local
+.env.*.local
+*.secret
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Build artifacts
+*.lock
+!package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
+
+# Temporary files
+*.tmp
+*.bak
+.cache/
+
+# Specify
+.specify/
