@@ -58,8 +58,9 @@ coverage/
 *.bak
 .cache/
 
-# Specify
+# Development tools
 .specify/
+.claude/
 
 # Internal specs
 specs/
