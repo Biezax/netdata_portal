@@ -62,6 +62,18 @@ ALERT_POLL_INTERVAL=15  # seconds
 REQUEST_TIMEOUT=5       # seconds
 ```
 
+## Development
+
+For local development with live code changes:
+
+```bash
+# Use dev compose file with build context
+docker compose -f docker-compose.dev.yml up --build
+
+# Or rebuild after code changes
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
 ## Documentation
 
 - **Specification**: [specs/001-netdata-aggregator/spec.md](specs/001-netdata-aggregator/spec.md)
