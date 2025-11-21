@@ -39,10 +39,18 @@ class Config:
         for url_str in host_urls:
             try:
                 from urllib.parse import urlparse
-                parsed = urlparse(url_str)
-                hostname = parsed.hostname or parsed.netloc or "unknown"
+
+                if "|" in url_str:
+                    url_part, display_name = url_str.split("|", 1)
+                    url_part = url_part.strip()
+                    display_name = display_name.strip()
+                else:
+                    url_part = url_str
+                    parsed = urlparse(url_str)
+                    display_name = parsed.hostname or parsed.netloc or "unknown"
+
                 self.hosts.append(
-                    HostConfig(url=url_str, display_name=hostname)
+                    HostConfig(url=url_part, display_name=display_name)
                 )
             except ValidationError as e:
                 raise ValueError(f"Invalid URL '{url_str}': {e}")

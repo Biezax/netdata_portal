@@ -1,12 +1,14 @@
 # Netdata Hosts Configuration
-# Each line should contain a full URL (scheme + host + port)
+# Format: URL or URL|DisplayName
+# - URL: full URL (scheme + host + port)
+# - DisplayName (optional): custom name for UI display
 # Lines starting with # are comments and will be ignored
 # Empty lines and whitespace are ignored
 
 # Example: Production servers
-# http://prod-server-01:19999
-# http://prod-server-02:19999
-# https://prod-server-03:19999
+# http://prod-server-01:19999|UltraThink Production
+# http://prod-server-02:19999|Backup Server
+# https://prod-server-03:19999|Monitoring Hub
 
-# Default: local Netdata instance
+# Default: local Netdata instance (without custom name)
 http://localhost:19999
