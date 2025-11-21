@@ -1,7 +1,7 @@
 services:
   backend:
     image: ghcr.io/biezax/netdata_portal/backend:latest
-    container_name: netdata-aggregator-backend
+    container_name: netdata-portal-backend
     ports:
       - "8000:8000"
     environment:
@@ -18,12 +18,12 @@ services:
 
   frontend:
     image: ghcr.io/biezax/netdata_portal/frontend:latest
-    container_name: netdata-aggregator-frontend
+    container_name: netdata-portal-frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - BACKEND_URL=http://backend:8000
+      - BACKEND_URL=http://netdata-portal-backend:8000
     depends_on:
       - backend
     restart: unless-stopped
