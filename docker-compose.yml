@@ -1,5 +1,8 @@
 services:
   backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
     image: ghcr.io/biezax/netdata_portal/backend:latest
     container_name: netdata-portal-backend
     ports:
@@ -17,6 +20,9 @@ services:
       - netdata-network
 
   frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
     image: ghcr.io/biezax/netdata_portal/frontend:latest
     container_name: netdata-portal-frontend
     ports:
