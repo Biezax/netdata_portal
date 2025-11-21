@@ -4,8 +4,6 @@ Web-based aggregator for viewing multiple Netdata monitoring instances through a
 
 ## Quick Start
 
-See [quickstart.md](specs/001-netdata-aggregator/quickstart.md) for detailed 5-minute setup guide.
-
 ```bash
 # 1. Clone repository
 git clone <repo-url>
@@ -76,10 +74,6 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Documentation
 
-- **Specification**: [specs/001-netdata-aggregator/spec.md](specs/001-netdata-aggregator/spec.md)
-- **Implementation Plan**: [specs/001-netdata-aggregator/plan.md](specs/001-netdata-aggregator/plan.md)
-- **API Contracts**: [specs/001-netdata-aggregator/contracts/backend-api.md](specs/001-netdata-aggregator/contracts/backend-api.md)
-- **Quickstart Guide**: [specs/001-netdata-aggregator/quickstart.md](specs/001-netdata-aggregator/quickstart.md)
 - **Nginx Example**: [examples/nginx.conf](examples/nginx.conf) - Reverse proxy configuration with SSL
 
 ## Performance

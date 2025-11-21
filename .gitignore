@@ -60,3 +60,6 @@ coverage/
 
 # Specify
 .specify/
+
+# Internal specs
+specs/
