@@ -5,6 +5,9 @@ x-netdata-agent: &netdata-agent
   restart: unless-stopped
   expose:
     - "19999"
+  volumes:
+    - ./config/netdata.stand.conf:/etc/netdata/netdata.conf:ro
+    - ./config/netdata-management.stand.key:/var/lib/netdata/netdata.api.key:ro
   networks:
     - stand-network
 
@@ -19,7 +22,8 @@ services:
       - REQUEST_TIMEOUT=5
       - HOSTS_FILE=config/hosts.stand.txt
       - AUTH_ENABLED=false
-      - NETDATA_MANAGEMENT_ENABLED=false
+      - NETDATA_MANAGEMENT_ENABLED=true
+      - NETDATA_MANAGEMENT_API_TOKEN=00000000-0000-4000-8000-000000000001
     volumes:
       - ./config:/app/config:ro
     depends_on:

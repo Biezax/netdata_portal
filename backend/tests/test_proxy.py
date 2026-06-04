@@ -1,5 +1,6 @@
 import importlib
 import sys
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -62,7 +63,7 @@ async def test_proxy_does_not_follow_upstream_redirects(app, monkeypatch):
 
     class UpstreamResponse:
         status_code = 302
-        headers = {"location": "http://not-allowed.example/"}
+        headers = {"location": "/relative-path"}
 
         async def aiter_bytes(self):
             yield b""
@@ -93,7 +94,69 @@ async def test_proxy_does_not_follow_upstream_redirects(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_proxy_redirects_external_upstream_redirects_to_dashboard(app, monkeypatch):
+    import proxy
+
+    class UpstreamResponse:
+        status_code = 302
+        headers = {"location": "https://app.netdata.cloud/"}
+        closed = False
+
+        async def aiter_bytes(self):
+            yield b""
+
+        async def aclose(self):
+            self.closed = True
+
+    class FakeClient:
+        follow_redirects = None
+        response = UpstreamResponse()
+
+        def build_request(self, method, target_url, **kwargs):
+            return object()
+
+        async def send(self, request, stream, follow_redirects):
+            self.follow_redirects = follow_redirects
+            return self.response
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(proxy, "get_http_client", lambda: fake_client)
+
+    async with make_client(app) as client:
+        response = await client.get("/api/proxy/test-host/api/v1/data")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/api/proxy/test-host/v3/"
+    assert fake_client.follow_redirects is False
+    assert fake_client.response.closed is True
+
+
+@pytest.mark.asyncio
 async def test_get_hosts_returns_configured_hosts(app):
+    from alerts import alert_poller
+    from models import Alert, AlertSeverity
+
+    alert_poller.alerts = [
+        Alert(
+            source_host="test-host",
+            alert_id="crit",
+            name="Critical",
+            severity=AlertSeverity.CRITICAL,
+            status="CRITICAL",
+            timestamp=datetime.now(timezone.utc),
+            message="critical alert",
+        ),
+        Alert(
+            source_host="test-host",
+            alert_id="warn",
+            name="Warning",
+            severity=AlertSeverity.WARNING,
+            status="WARNING",
+            timestamp=datetime.now(timezone.utc),
+            message="warning alert",
+        ),
+    ]
+
     async with make_client(app) as client:
         response = await client.get("/api/hosts")
 
@@ -101,3 +164,5 @@ async def test_get_hosts_returns_configured_hosts(app):
     data = response.json()
     assert data["total"] == 1
     assert data["hosts"][0]["name"] == "test-host"
+    assert data["hosts"][0]["status"]["critical_count"] == 1
+    assert data["hosts"][0]["status"]["warning_count"] == 1

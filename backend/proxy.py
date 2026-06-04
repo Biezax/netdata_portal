@@ -1,10 +1,15 @@
 import httpx
 from fastapi import Response, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from config import config
 from http_client import get_http_client
-from errors import HostNotAllowedError, GatewayTimeoutError, BadGatewayError, BadRequestError
+from errors import (
+    HostNotAllowedError,
+    GatewayTimeoutError,
+    BadGatewayError,
+    BadRequestError,
+)
 
 
 async def proxy_request(hostname: str, path: str, request: Request = None) -> Response:
@@ -42,6 +47,13 @@ async def proxy_request(hostname: str, path: str, request: Request = None) -> Re
 
         upstream_request = client.build_request(method, target_url, **request_kwargs)
         response = await client.send(upstream_request, stream=True, follow_redirects=False)
+        location = response.headers.get("location")
+        if location and not _is_allowed_redirect(location, str(host_config.url)):
+            await response.aclose()
+            return RedirectResponse(
+                url=f"/api/proxy/{quote(hostname, safe='')}/v3/",
+                status_code=307,
+            )
 
         filtered_headers = {
             k: v for k, v in response.headers.items()
@@ -60,3 +72,16 @@ async def proxy_request(hostname: str, path: str, request: Request = None) -> Re
         raise BadGatewayError(hostname, f"connection refused: {str(e)}")
     except Exception as e:
         raise BadGatewayError(hostname, str(e))
+
+
+def _is_allowed_redirect(location: str, upstream_base_url: str) -> bool:
+    parsed_location = urlsplit(location)
+    if not parsed_location.scheme and not parsed_location.netloc:
+        return True
+
+    parsed_base = urlsplit(upstream_base_url)
+    return (
+        parsed_location.scheme in ["http", "https"]
+        and parsed_location.scheme == parsed_base.scheme
+        and parsed_location.netloc == parsed_base.netloc
+    )

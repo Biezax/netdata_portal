@@ -10,7 +10,23 @@ from models import HostConfig
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).resolve().parent
+
+
+def _resolve_project_root() -> Path:
+    configured_root = os.getenv("PROJECT_ROOT", "")
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+
+    repo_root = BACKEND_DIR.parent
+    if (repo_root / "config").exists():
+        return repo_root
+
+    logger.warning("Config directory not found under %s; using %s as project root", repo_root, BACKEND_DIR)
+    return BACKEND_DIR
+
+
+PROJECT_ROOT = _resolve_project_root()
 
 
 def _resolve_hosts_file() -> Path:
@@ -71,6 +87,7 @@ class Config:
         self.session_cookie_samesite = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
 
         self.hosts_file = _resolve_hosts_file()
+        logger.info("Using project root %s and hosts file %s", PROJECT_ROOT, self.hosts_file)
         self._last_mtime = 0.0
         self.load_hosts()
 

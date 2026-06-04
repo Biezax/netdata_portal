@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://netdata-portal-backend:8000';
 const BACKEND_API_PATHS = new Set(['hosts', 'alerts', 'proxy', 'auth']);
-const PROXY_HOST_COOKIE = 'netdata_proxy_host';
 const LOCAL_ONLY_PATHS = new Set([
   '_next',
   'favicon.ico',
@@ -11,6 +10,22 @@ const LOCAL_ONLY_PATHS = new Set([
   'sitemap.xml',
   '__nextjs_original-stack-frame',
 ]);
+const NETDATA_PROXY_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "connect-src 'self' blob:",
+  "font-src 'self' data:",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "frame-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "worker-src 'self' blob:",
+  "navigate-to 'self'",
+].join('; ');
 
 export async function proxyToBackend(request: NextRequest, backendPath: string) {
   const searchParams = request.nextUrl.searchParams.toString();
@@ -55,12 +70,9 @@ export async function proxyToBackend(request: NextRequest, backendPath: string) 
       responseHeaders.append('Set-Cookie', setCookie);
     }
 
-    const proxyHost = getProxyHostFromBackendPath(backendPath);
-    if (proxyHost && shouldPersistProxyHost(request, backendPath, response)) {
-      responseHeaders.append(
-        'Set-Cookie',
-        `${PROXY_HOST_COOKIE}=${encodeURIComponent(proxyHost)}; Path=/; SameSite=Lax; HttpOnly`
-      );
+    if (isNetdataProxyPath(backendPath)) {
+      responseHeaders.set('Referrer-Policy', 'same-origin');
+      responseHeaders.set('Content-Security-Policy', NETDATA_PROXY_CSP);
     }
 
     return new NextResponse(request.method === 'HEAD' ? null : response.body, {
@@ -82,7 +94,7 @@ export function resolveApiBackendPath(request: NextRequest, pathParts: string[])
     return path;
   }
 
-  const host = getProxyHostFromReferer(request) || getProxyHostFromCookie(request);
+  const host = getProxyHostFromReferer(request);
   return host ? `proxy/${encodeURIComponent(host)}/api/${path}` : path;
 }
 
@@ -91,7 +103,7 @@ export function resolveAssetBackendPath(request: NextRequest, pathParts: string[
     return null;
   }
 
-  const host = getProxyHostFromReferer(request) || getProxyHostFromCookie(request);
+  const host = getProxyHostFromReferer(request);
   return host ? `proxy/${encodeURIComponent(host)}/${joinPathParts(request, pathParts)}` : null;
 }
 
@@ -110,24 +122,6 @@ function getProxyHostFromReferer(request: NextRequest) {
   }
 }
 
-function getProxyHostFromCookie(request: NextRequest) {
-  const value = request.cookies.get(PROXY_HOST_COOKIE)?.value;
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
-}
-
-function getProxyHostFromBackendPath(backendPath: string) {
-  const match = backendPath.match(/^proxy\/([^/]+)(?:\/|$)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 function shouldSkipAssetProxy(request: NextRequest, pathParts: string[]) {
   const firstPart = pathParts[0];
   if (!firstPart || LOCAL_ONLY_PATHS.has(firstPart)) {
@@ -142,15 +136,8 @@ function shouldSkipAssetProxy(request: NextRequest, pathParts: string[]) {
   return request.headers.get('sec-fetch-mode') === 'navigate' || accept.includes('text/html');
 }
 
-function shouldPersistProxyHost(request: NextRequest, backendPath: string, response: Response) {
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return false;
-  }
-
-  const dashboardPath = /^proxy\/[^/]+\/v3\/?$/.test(backendPath);
-  const acceptsHtml = (request.headers.get('accept') || '').includes('text/html');
-  const returnsHtml = (response.headers.get('content-type') || '').includes('text/html');
-  return dashboardPath && (acceptsHtml || returnsHtml);
+function isNetdataProxyPath(backendPath: string) {
+  return /^proxy\/[^/]+(?:\/|$)/.test(backendPath);
 }
 
 function joinPathParts(request: NextRequest, pathParts: string[]) {

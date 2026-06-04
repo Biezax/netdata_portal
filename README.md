@@ -1,144 +1,151 @@
-# Netdata Multi-Instance Aggregator
+# Netdata Portal
 
-Web-based aggregator for viewing multiple Netdata monitoring instances through a unified interface. Eliminates the need for dozens of browser tabs when monitoring multiple hosts.
+Single-page portal for viewing several Netdata agents through one authenticated UI.
+It keeps Netdata API tokens in the backend, proxies dashboards through a host
+whitelist, aggregates alerts, and can silence or re-enable Netdata notifications
+per host.
+
+## Screenshots
+
+![Dashboard view](docs/screenshots/dashboard.png)
+
+![Alerts view](docs/screenshots/alerts.png)
+
+## Features
+
+- Full Netdata dashboard per configured host, loaded through `/api/proxy/<host>/`.
+- Sliding host sidebar with per-host `critical / warning` counters.
+- Unified alerts view across all configured hosts.
+- Per-host notification control via Netdata Health Management API.
+- Optional LDAP auth, suitable for FreeIPA/OpenLDAP-style deployments.
+- Backend-only management token handling; frontend never receives the token.
+- CSP and proxy redirect guard for proxied Netdata UI external calls.
+- Hot-reloaded `config/hosts.txt`.
+- Disposable local stand with 10 Netdata agents.
 
 ## Quick Start
 
 ```bash
-# 1. Clone repository
-git clone <repo-url>
-cd netdata_portal
-
-# 2. Configure hosts
 cp .env.example .env
-# Edit config/hosts.txt and add your Netdata instances (one URL per line)
-
-# 3. Start services
-docker compose up -d
-
-# 4. Access UI
+docker compose up -d --build
 open http://localhost:3000
 ```
 
-## Features
+Hosts are read from `config/hosts.txt`. Each line is either a Netdata URL or
+`URL|display-name`:
 
-- **Dashboard View (MVP)**: View full Netdata dashboard for any configured host
-- **Unified Alerts**: See all active alerts across all hosts sorted by severity
-- **Auto-reload Config**: Add/remove hosts by editing config/hosts.txt (updates within ~5s, no restart needed)
-- **Dark Theme**: Netdata/Grafana-inspired visual style
-- **Graceful Degradation**: Partial host failures don't block the UI
-
-## Architecture
-
-- **Backend**: FastAPI (Python 3.13) + httpx async proxy
-- **Frontend**: Next.js 16 (React 19) + TypeScript + Tailwind CSS
-- **Deployment**: Docker Compose (development) or Kubernetes (production)
-- **Storage**: None - ephemeral in-memory state only
-
-## Configuration
-
-### Hosts Configuration (`config/hosts.txt`)
-
-Add Netdata instance URLs, one per line:
-
-```bash
-# Production servers
-http://prod-server-01:19999
-http://prod-server-02:19999
-
-# Dev servers
-http://dev-server:19999
+```text
+http://prod-01:19999|prod-01
+http://prod-02:19999|prod-02
 ```
 
-Lines starting with `#` are comments. Empty lines are ignored.
-Changes are auto-detected within ~5 seconds (no restart needed).
-
-### Environment Variables (`.env`)
-
-```bash
-ALERT_POLL_INTERVAL=15  # seconds
-REQUEST_TIMEOUT=5       # seconds
-```
-
-Notification silence controls are disabled by default. For Docker Compose, keep
-the backend-only Netdata Health Management API token in a mounted file:
-
-```bash
-NETDATA_MANAGEMENT_ENABLED=true
-mkdir -p secrets
-printf '%s' '<netdata-api-token>' > secrets/netdata_management_api_token
-```
-
-For non-container runs, `NETDATA_MANAGEMENT_API_TOKEN` or
-`NETDATA_MANAGEMENT_API_TOKEN_FILE` can be used.
-
-## Development
-
-For local development with live code changes:
-
-```bash
-# Rebuild containers after code changes
-docker compose up -d --build
-
-# Or run services directly
-uv sync --locked --dev
-uv run uvicorn main:app --app-dir backend --reload
-cd frontend && npm run dev
-```
+Empty lines and lines starting with `#` are ignored. Changes are picked up
+without restarting the backend.
 
 ## Local Stand
 
-Run a disposable stand with the portal and 10 Netdata agents:
+Run the portal with 10 disposable Netdata agents:
 
 ```bash
 docker compose -f docker-compose.stand.yml up -d --build
 open http://localhost:3000
+```
+
+Stop it with:
+
+```bash
 docker compose -f docker-compose.stand.yml down
 ```
 
-## Documentation
+The stand uses a fake management key from `config/netdata-management.stand.key`.
+Do not reuse it outside local testing.
 
-- **Nginx Example**: [examples/nginx.conf](examples/nginx.conf) - Reverse proxy configuration with SSL
+## Configuration
 
-## Performance
+Main variables are in `.env.example`:
 
-- **Dashboard load**: <500ms
-- **Alert aggregation**: <20s (includes 15s poll cycle)
-- **Config reload**: ~5s (polling-based detection)
-- **Supports**: 20+ concurrent Netdata hosts
+```bash
+HOSTS_FILE=config/hosts.txt
+ALERT_POLL_INTERVAL=15
+REQUEST_TIMEOUT=5
+```
 
-## Security
+Notification management is disabled by default. Enable it only on the backend:
 
-- Hostname whitelist validation (SSRF protection)
-- Path traversal prevention
-- 5-second timeout per request (DoS protection)
-- Optional LDAP authentication (see below)
+```bash
+NETDATA_MANAGEMENT_ENABLED=true
+NETDATA_MANAGEMENT_API_TOKEN_FILE=/run/secrets/netdata_management_api_token
+```
+
+For Compose, put the real token in `secrets/netdata_management_api_token` and
+keep `./secrets` mounted read-only. `NETDATA_MANAGEMENT_API_TOKEN` also works
+for local non-container runs, but file-based secrets are preferred.
 
 ## Authentication
 
-LDAP authentication is enforced on the backend and covers every endpoint, including the
-proxied Netdata dashboards. It is **disabled by default**; set `AUTH_ENABLED=true` and
-configure the `LDAP_*` / `SESSION_*` variables (see `.env.example`) to turn it on.
+LDAP auth is disabled by default:
 
-Flow: the frontend shows a `/login` page that posts credentials to the backend, which
-binds to LDAP and, on success, issues a signed `HttpOnly` session cookie. Subsequent
-requests are gated by the backend; the frontend redirects to `/login` on any `401`.
+```bash
+AUTH_ENABLED=false
+```
 
-Hardening built in:
+To enable it, set `AUTH_ENABLED=true` and configure:
 
-- Empty passwords are rejected (avoids the anonymous-bind auth bypass).
-- The username is escaped before it enters the search filter (LDAP injection).
-- Access is restricted to members of `LDAP_REQUIRED_GROUP`.
-- Encrypt the connection with `ldaps://` or `LDAP_START_TLS=true` and keep
-  `LDAP_TLS_VALIDATE=true`. Set `SESSION_COOKIE_SECURE=true` behind HTTPS.
-- Provide `SESSION_SECRET` (or `SESSION_SECRET_FILE`) — without it the backend refuses
-  to start when auth is enabled. Generate one with `openssl rand -hex 32`.
+```bash
+LDAP_URL=ldaps://ipa.example.com:636
+LDAP_USER_BASE_DN=cn=users,cn=accounts,dc=example,dc=com
+LDAP_USER_FILTER=(uid={username})
+LDAP_REQUIRED_GROUP=cn=netdata-admins,cn=groups,cn=accounts,dc=example,dc=com
+SESSION_SECRET_FILE=/run/secrets/session_secret
+```
 
-Brute-force throttling is intentionally left to the reverse proxy / ingress
-(e.g. nginx `limit_req`) — an in-app counter would not hold across replicas.
+Notes:
 
-When auth is enabled, consider dropping the backend `8000:8000` port mapping in
-`docker-compose.yml` so the API is only reachable through the frontend.
+- Empty passwords are rejected.
+- `{username}` is escaped before LDAP search.
+- Access requires membership in `LDAP_REQUIRED_GROUP`.
+- Use `ldaps://` or `LDAP_START_TLS=true`.
+- Set `SESSION_COOKIE_SECURE=true` behind HTTPS.
+- In production, remove the backend `8000:8000` port mapping and expose only the frontend.
+
+## Security Model
+
+- Host access is limited to configured hostnames.
+- Proxy paths reject traversal.
+- Netdata dashboard responses get `Referrer-Policy: same-origin`.
+- Netdata dashboard responses get a CSP that blocks external cloud/API/image/frame navigation.
+- External upstream redirects from proxied Netdata are redirected back to the local dashboard.
+- The iframe does not allow popups.
+- Management API token is backend-only.
+
+Blocked Netdata Cloud calls may still appear in the browser console as CSP
+violations. That is expected; the portal keeps the iframe on the local proxied
+dashboard.
+
+## Development
+
+```bash
+uv sync --locked --dev
+uv run uvicorn main:app --app-dir backend --reload
+cd frontend
+npm install
+npm run dev
+```
+
+Common checks:
+
+```bash
+uv run pytest
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+## Architecture
+
+- Backend: FastAPI + httpx async client.
+- Frontend: Next.js 16 + React 19 + TypeScript + Tailwind CSS.
+- Runtime state: in-memory polling cache only.
+- Deployment: Docker Compose; reverse proxy/ingress should handle TLS and rate limits.
 
 ## License
 

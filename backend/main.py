@@ -1,22 +1,19 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request
+
 import httpx
+from fastapi import FastAPI, Request
+
+import logging_config  # noqa: F401
 from errors import AggregatorException, error_response
 from config import config
 from proxy import proxy_request
 from alerts import alert_poller
 from notifications import get_notification_status, reset_notifications, silence_notifications
-from models import HostStatus
+from models import AlertSeverity, HostStatus
 from http_client import set_http_client
-import asyncio
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"time": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s"}',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-)
 
 logger = logging.getLogger(__name__)
 startup_time = datetime.now(timezone.utc)
@@ -92,12 +89,25 @@ async def health_check():
 async def get_hosts():
     hosts_list = []
     host_statuses = alert_poller.get_host_statuses()
+    severity_counts = {
+        host.display_name: {"critical": 0, "warning": 0}
+        for host in config.hosts
+    }
+    for alert in alert_poller.get_alerts():
+        counts = severity_counts.get(alert.source_host)
+        if not counts:
+            continue
+        if alert.severity == AlertSeverity.CRITICAL:
+            counts["critical"] += 1
+        elif alert.severity == AlertSeverity.WARNING:
+            counts["warning"] += 1
 
     for host in config.hosts:
         status = host_statuses.get(
             host.display_name,
             HostStatus(hostname=host.display_name, reachable=False, alert_count=0),
         )
+        counts = severity_counts[host.display_name]
         hosts_list.append({
             "name": host.display_name,
             "url": str(host.url),
@@ -105,6 +115,8 @@ async def get_hosts():
                 "reachable": status.reachable,
                 "last_check": status.last_check.isoformat() if status.last_check else None,
                 "alert_count": status.alert_count,
+                "critical_count": counts["critical"],
+                "warning_count": counts["warning"],
                 "error_message": status.error_message,
             },
         })

@@ -65,7 +65,7 @@ export default function AlertsView() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-netdata-bg">
+      <div className="h-full flex items-center justify-center bg-netdata-bg">
         <p className="text-netdata-text-muted">Loading alerts...</p>
       </div>
     );
@@ -73,14 +73,14 @@ export default function AlertsView() {
 
   if (!alertsData) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-netdata-bg">
+      <div className="h-full flex items-center justify-center bg-netdata-bg">
         <p className="text-netdata-text-muted">Failed to load alerts</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex">
+    <div className="h-full flex">
       <aside className="w-full bg-netdata-bg rounded-2xl border border-netdata-border p-3 flex flex-col overflow-hidden">
         <div className="mb-2">
           <div className="text-sm font-medium text-netdata-text-muted mb-2">
