@@ -1,0 +1,105 @@
+name: netdata-portal-stand
+
+x-netdata-agent: &netdata-agent
+  image: netdata/netdata:stable
+  restart: unless-stopped
+  expose:
+    - "19999"
+  networks:
+    - stand-network
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: netdata-portal-stand/backend:latest
+    environment:
+      - ALERT_POLL_INTERVAL=15
+      - REQUEST_TIMEOUT=5
+      - HOSTS_FILE=config/hosts.stand.txt
+      - AUTH_ENABLED=false
+      - NETDATA_MANAGEMENT_ENABLED=false
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      - netdata-agent-01
+      - netdata-agent-02
+      - netdata-agent-03
+      - netdata-agent-04
+      - netdata-agent-05
+      - netdata-agent-06
+      - netdata-agent-07
+      - netdata-agent-08
+      - netdata-agent-09
+      - netdata-agent-10
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - stand-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    image: netdata-portal-stand/frontend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - stand-network
+
+  netdata-agent-01:
+    <<: *netdata-agent
+    hostname: netdata-agent-01
+
+  netdata-agent-02:
+    <<: *netdata-agent
+    hostname: netdata-agent-02
+
+  netdata-agent-03:
+    <<: *netdata-agent
+    hostname: netdata-agent-03
+
+  netdata-agent-04:
+    <<: *netdata-agent
+    hostname: netdata-agent-04
+
+  netdata-agent-05:
+    <<: *netdata-agent
+    hostname: netdata-agent-05
+
+  netdata-agent-06:
+    <<: *netdata-agent
+    hostname: netdata-agent-06
+
+  netdata-agent-07:
+    <<: *netdata-agent
+    hostname: netdata-agent-07
+
+  netdata-agent-08:
+    <<: *netdata-agent
+    hostname: netdata-agent-08
+
+  netdata-agent-09:
+    <<: *netdata-agent
+    hostname: netdata-agent-09
+
+  netdata-agent-10:
+    <<: *netdata-agent
+    hostname: netdata-agent-10
+
+networks:
+  stand-network:
+    driver: bridge

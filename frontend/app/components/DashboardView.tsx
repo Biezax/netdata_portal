@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fetchJson } from '../lib/fetchJson';
 
 interface DashboardViewProps {
   hostname: string;
@@ -25,7 +26,7 @@ export default function DashboardView({ hostname }: DashboardViewProps) {
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch(statusUrl, { signal });
+      const response = await fetchJson(statusUrl, { signal });
       const data = await response.json();
       if (signal?.aborted) {
         return;
@@ -80,7 +81,7 @@ export default function DashboardView({ hostname }: DashboardViewProps) {
   const runManagementCommand = async (command: 'silence' | 'reset') => {
     setBusy(true);
     try {
-      const response = await fetch(`${statusUrl}/${command}`, { method: 'POST' });
+      const response = await fetchJson(`${statusUrl}/${command}`, { method: 'POST' });
       if (response.status === 503) {
         const data = await response.json();
         if (data.error === 'ManagementDisabled') {

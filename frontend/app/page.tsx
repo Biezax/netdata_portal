@@ -7,6 +7,7 @@ import HostsSidebar from './components/HostsSidebar';
 import DashboardView from './components/DashboardView';
 import AlertsView from './components/AlertsView';
 import ErrorPage from './components/ErrorPage';
+import { fetchJson } from './lib/fetchJson';
 
 type ViewMode = 'hosts' | 'alerts';
 
@@ -29,11 +30,20 @@ function HomeContent() {
   const [selectedHost, setSelectedHost] = useState<string | null>(searchParams.get('host'));
   const [hosts, setHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchJson('/api/auth/me')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => data && setUser(data.user))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchHosts = async () => {
       try {
-        const response = await fetch('/api/hosts');
+        const response = await fetchJson('/api/hosts');
+        if (!response.ok) return;
         const data = await response.json();
         const nextHosts = data.hosts || [];
         setHosts(nextHosts);
@@ -67,6 +77,11 @@ function HomeContent() {
     window.history.replaceState({}, '', url.toString());
   }, [viewMode, selectedHost]);
 
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.assign('/login');
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-netdata-bg text-netdata-text-muted">
@@ -77,8 +92,19 @@ function HomeContent() {
 
   return (
     <div className="flex flex-col h-screen bg-netdata-bg">
-      <header className="h-14 px-4 flex items-center border-b border-netdata-border bg-netdata-bg">
+      <header className="h-14 px-4 flex items-center justify-between border-b border-netdata-border bg-netdata-bg">
         <TabSwitcher activeTab={viewMode} onTabChange={setViewMode} />
+        {user && (
+          <div className="flex items-center gap-3 text-sm text-netdata-text-muted">
+            <span>{user}</span>
+            <button
+              onClick={handleLogout}
+              className="rounded px-3 py-1 text-netdata-text-secondary hover:bg-netdata-bg-panel hover:text-netdata-text-primary"
+            >
+              Logout
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 p-4 flex gap-4 overflow-hidden">

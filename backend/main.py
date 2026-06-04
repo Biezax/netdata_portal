@@ -42,7 +42,22 @@ async def lifespan(app: FastAPI):
             set_http_client(None)
 
 
-app = FastAPI(title="Netdata Multi-Instance Aggregator", lifespan=lifespan)
+# Auto docs are served outside /api/, so the auth gate would leave them public; disable
+# them (and the OpenAPI schema) entirely when auth is on.
+app = FastAPI(
+    title="Netdata Multi-Instance Aggregator",
+    lifespan=lifespan,
+    docs_url=None if config.auth_enabled else "/docs",
+    redoc_url=None if config.auth_enabled else "/redoc",
+    openapi_url=None if config.auth_enabled else "/openapi.json",
+)
+
+# Keep after any other add_middleware calls: setup_auth adds SessionMiddleware, which must
+# wrap the auth gate so request.session is decoded before the gate runs.
+if config.auth_enabled:
+    from auth import setup_auth
+
+    setup_auth(app)
 
 
 @app.exception_handler(AggregatorException)

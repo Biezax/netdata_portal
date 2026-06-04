@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://netdata-portal-backend:8000';
-const BACKEND_API_PATHS = new Set(['hosts', 'alerts', 'proxy']);
+const BACKEND_API_PATHS = new Set(['hosts', 'alerts', 'proxy', 'auth']);
 const PROXY_HOST_COOKIE = 'netdata_proxy_host';
 const LOCAL_ONLY_PATHS = new Set([
   '_next',
@@ -27,6 +27,11 @@ export async function proxyToBackend(request: NextRequest, backendPath: string) 
       headers['Content-Type'] = contentType;
     }
 
+    const cookie = request.headers.get('cookie');
+    if (cookie) {
+      headers['Cookie'] = cookie;
+    }
+
     const options: RequestInit = {
       method: request.method,
       headers,
@@ -39,11 +44,16 @@ export async function proxyToBackend(request: NextRequest, backendPath: string) 
 
     const response = await fetch(targetUrl, options);
     const responseHeaders = new Headers();
+    const skipHeaders = ['content-encoding', 'content-length', 'transfer-encoding', 'set-cookie'];
     response.headers.forEach((value, key) => {
-      if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+      if (!skipHeaders.includes(key.toLowerCase())) {
         responseHeaders.set(key, value);
       }
     });
+
+    for (const setCookie of response.headers.getSetCookie()) {
+      responseHeaders.append('Set-Cookie', setCookie);
+    }
 
     const proxyHost = getProxyHostFromBackendPath(backendPath);
     if (proxyHost && shouldPersistProxyHost(request, backendPath, response)) {
@@ -60,10 +70,7 @@ export async function proxyToBackend(request: NextRequest, backendPath: string) 
     });
   } catch (error) {
     console.error('[Proxy] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to proxy request', details: String(error) },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: 'Failed to proxy request' }, { status: 502 });
   }
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fetchJson } from '../lib/fetchJson';
 
 interface Alert {
   source_host: string;
@@ -31,7 +32,8 @@ export default function AlertsView() {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const response = await fetch('/api/alerts');
+        const response = await fetchJson('/api/alerts');
+        if (!response.ok) return;
         const data = await response.json();
         setAlertsData(data);
       } catch (error) {

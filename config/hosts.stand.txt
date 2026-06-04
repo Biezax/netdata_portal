@@ -1,0 +1,11 @@
+# Local Docker Compose stand with 10 Netdata agents.
+http://netdata-agent-01:19999|agent-01
+http://netdata-agent-02:19999|agent-02
+http://netdata-agent-03:19999|agent-03
+http://netdata-agent-04:19999|agent-04
+http://netdata-agent-05:19999|agent-05
+http://netdata-agent-06:19999|agent-06
+http://netdata-agent-07:19999|agent-07
+http://netdata-agent-08:19999|agent-08
+http://netdata-agent-09:19999|agent-09
+http://netdata-agent-10:19999|agent-10

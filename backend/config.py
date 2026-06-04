@@ -51,9 +51,46 @@ class Config:
             os.getenv("NETDATA_MANAGEMENT_ENABLED", "false")
         )
         self.netdata_management_api_token = _read_secret("NETDATA_MANAGEMENT_API_TOKEN")
+
+        self.auth_enabled = _parse_bool(os.getenv("AUTH_ENABLED", "false"))
+        self.ldap_url = os.getenv("LDAP_URL", "")
+        self.ldap_start_tls = _parse_bool(os.getenv("LDAP_START_TLS", "false"))
+        self.ldap_tls_validate = _parse_bool(os.getenv("LDAP_TLS_VALIDATE", "true"))
+        self.ldap_ca_cert_file = os.getenv("LDAP_CA_CERT_FILE", "")
+        self.ldap_connect_timeout = int(os.getenv("LDAP_CONNECT_TIMEOUT", "5"))
+        self.ldap_bind_dn = os.getenv("LDAP_BIND_DN", "")
+        self.ldap_bind_password = _read_secret("LDAP_BIND_PASSWORD")
+        self.ldap_user_base_dn = os.getenv("LDAP_USER_BASE_DN", "")
+        self.ldap_user_filter = os.getenv("LDAP_USER_FILTER", "(uid={username})")
+        self.ldap_display_name_attr = os.getenv("LDAP_DISPLAY_NAME_ATTR", "cn")
+        self.ldap_required_group = os.getenv("LDAP_REQUIRED_GROUP", "")
+        self.ldap_group_attr = os.getenv("LDAP_GROUP_ATTR", "memberOf")
+        self.session_secret = _read_secret("SESSION_SECRET")
+        self.session_ttl = int(os.getenv("SESSION_TTL", "28800"))
+        self.session_cookie_secure = _parse_bool(os.getenv("SESSION_COOKIE_SECURE", "false"))
+        self.session_cookie_samesite = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
+
         self.hosts_file = _resolve_hosts_file()
         self._last_mtime = 0.0
         self.load_hosts()
+
+        if self.auth_enabled:
+            self._validate_auth_config()
+
+    def _validate_auth_config(self) -> None:
+        required = {
+            "LDAP_URL": self.ldap_url,
+            "LDAP_USER_BASE_DN": self.ldap_user_base_dn,
+            "LDAP_REQUIRED_GROUP": self.ldap_required_group,
+            "SESSION_SECRET": self.session_secret,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError(
+                f"AUTH_ENABLED is set but required variables are missing: {', '.join(missing)}"
+            )
+        if "{username}" not in self.ldap_user_filter:
+            raise ValueError("LDAP_USER_FILTER must contain the {username} placeholder")
 
     @property
     def netdata_management_available(self) -> bool:

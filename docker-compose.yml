@@ -5,8 +5,14 @@ services:
       dockerfile: docker/Dockerfile.backend
     image: ghcr.io/biezax/netdata_portal/backend:latest
     container_name: netdata-portal-backend
+    # Backend enforces LDAP auth when AUTH_ENABLED=true. Drop this mapping to keep it
+    # private — the frontend still reaches it over the internal network.
     ports:
       - "8000:8000"
+    # AUTH_ENABLED / LDAP_* / SESSION_* are read from .env (see .env.example).
+    env_file:
+      - path: .env
+        required: false
     environment:
       - ALERT_POLL_INTERVAL=${ALERT_POLL_INTERVAL:-15}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-5}
