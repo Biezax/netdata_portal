@@ -14,6 +14,8 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.uv-cache/
+.npm-cache/
 
 # Node.js/TypeScript
 node_modules/
@@ -33,6 +35,7 @@ yarn-error.log*
 .env.local
 .env.*.local
 *.secret
+secrets/
 
 # IDEs
 .vscode/
@@ -49,6 +52,7 @@ coverage/
 
 # Build artifacts
 *.lock
+!uv.lock
 !package-lock.json
 !yarn.lock
 !pnpm-lock.yaml

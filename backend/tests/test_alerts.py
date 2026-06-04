@@ -1,21 +1,39 @@
-import pytest
-from fastapi.testclient import TestClient
+import importlib
 import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import httpx
+import pytest
 
-os.environ["NETDATA_HOSTS"] = "http://test-host:19999"
+
+def load_app(monkeypatch, tmp_path):
+    hosts_file = tmp_path / "hosts.txt"
+    hosts_file.write_text("http://127.0.0.1:1|test-host\n")
+    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    monkeypatch.setenv("REQUEST_TIMEOUT", "1")
+
+    for module_name in ["main", "alerts", "proxy", "notifications", "config", "http_client"]:
+        sys.modules.pop(module_name, None)
+
+    return importlib.import_module("main").app
 
 
 @pytest.fixture
-def client():
-    from main import app
-    return TestClient(app)
+def app(monkeypatch, tmp_path):
+    return load_app(monkeypatch, tmp_path)
 
 
-def test_get_alerts_endpoint_exists(client):
-    response = client.get("/api/alerts")
+def make_client(app):
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_endpoint_exists(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/alerts")
+
     assert response.status_code == 200
     data = response.json()
     assert "alerts" in data
@@ -24,8 +42,11 @@ def test_get_alerts_endpoint_exists(client):
     assert "unreachable_hosts" in data
 
 
-def test_alerts_have_severity_counts(client):
-    response = client.get("/api/alerts")
+@pytest.mark.asyncio
+async def test_alerts_have_severity_counts(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/alerts")
+
     data = response.json()
     assert "critical" in data["by_severity"]
     assert "warning" in data["by_severity"]

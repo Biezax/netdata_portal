@@ -60,16 +60,30 @@ ALERT_POLL_INTERVAL=15  # seconds
 REQUEST_TIMEOUT=5       # seconds
 ```
 
+Notification silence controls are disabled by default. For Docker Compose, keep
+the backend-only Netdata Health Management API token in a mounted file:
+
+```bash
+NETDATA_MANAGEMENT_ENABLED=true
+mkdir -p secrets
+printf '%s' '<netdata-api-token>' > secrets/netdata_management_api_token
+```
+
+For non-container runs, `NETDATA_MANAGEMENT_API_TOKEN` or
+`NETDATA_MANAGEMENT_API_TOKEN_FILE` can be used.
+
 ## Development
 
 For local development with live code changes:
 
 ```bash
-# Use dev compose file with build context
-docker compose -f docker-compose.dev.yml up --build
+# Rebuild containers after code changes
+docker compose up -d --build
 
-# Or rebuild after code changes
-docker compose -f docker-compose.dev.yml up -d --build
+# Or run services directly
+uv sync --locked --dev
+uv run uvicorn main:app --app-dir backend --reload
+cd frontend && npm run dev
 ```
 
 ## Documentation

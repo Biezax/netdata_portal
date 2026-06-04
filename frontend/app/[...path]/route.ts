@@ -1,15 +1,7 @@
-import { NextRequest } from 'next/server';
-import { proxyToBackend, resolveApiBackendPath } from '../../lib/backendProxy';
+import { NextRequest, NextResponse } from 'next/server';
+import { proxyToBackend, resolveAssetBackendPath } from '../lib/backendProxy';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  const { path } = await params;
-  return proxyRequest(request, path);
-}
-
-export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
@@ -26,5 +18,10 @@ export async function HEAD(
 }
 
 async function proxyRequest(request: NextRequest, pathParts: string[]) {
-  return proxyToBackend(request, resolveApiBackendPath(request, pathParts));
+  const backendPath = resolveAssetBackendPath(request, pathParts);
+  if (!backendPath) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  return proxyToBackend(request, backendPath);
 }

@@ -59,10 +59,7 @@ export default function AlertsView() {
     }
   };
 
-  const sortedAlerts = alertsData?.alerts.slice().sort((a, b) => {
-    const severityOrder = { critical: 3, warning: 2, info: 1 };
-    return severityOrder[b.severity] - severityOrder[a.severity];
-  }) || [];
+  const alerts = alertsData?.alerts || [];
 
   if (loading) {
     return (
@@ -104,13 +101,13 @@ export default function AlertsView() {
         </div>
 
         <ul className="overflow-y-auto flex-1 space-y-1">
-          {sortedAlerts.length === 0 ? (
+          {alerts.length === 0 ? (
             <li className="text-center text-netdata-text-muted mt-8">
               <div className="text-4xl mb-2">✓</div>
               <p>No active alerts</p>
             </li>
           ) : (
-            sortedAlerts.map((alert) => (
+            alerts.map((alert) => (
               <li
                 key={`${alert.source_host}-${alert.alert_id}`}
                 className={`px-2.5 py-2 rounded-lg text-sm ${getSeverityBg(alert.severity)} text-netdata-text-primary`}

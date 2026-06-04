@@ -1,6 +1,6 @@
-from fastapi import HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from typing import Optional
+from html import escape
 
 
 class AggregatorException(Exception):
@@ -41,7 +41,38 @@ class BadGatewayError(AggregatorException):
         )
 
 
-def error_response(exc: AggregatorException) -> HTMLResponse:
+class ManagementForbiddenError(AggregatorException):
+    def __init__(self, hostname: str, status_code: int):
+        super().__init__(
+            status_code=403,
+            error="ManagementForbidden",
+            detail=(
+                "Netdata management API rejected the request. Check the management "
+                "API token and Netdata allow management from settings."
+            ),
+            host=hostname,
+        )
+        self.upstream_status_code = status_code
+
+
+class BadRequestError(AggregatorException):
+    def __init__(self, detail: str, host: Optional[str] = None):
+        super().__init__(
+            status_code=400,
+            error="BadRequest",
+            detail=detail,
+            host=host,
+        )
+
+
+def error_response(exc: AggregatorException, html: bool = False):
+    if not html:
+        return JSONResponse(
+            content={"error": exc.error, "detail": exc.detail, "host": exc.host},
+            status_code=exc.status_code,
+        )
+
+    host = escape(exc.host or "")
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -89,10 +120,10 @@ def error_response(exc: AggregatorException) -> HTMLResponse:
     </head>
     <body>
         <div class="error-container">
-            <div class="error-icon">⚠️</div>
+            <div class="error-icon">!</div>
             <div class="error-title">Netdata Unavailable</div>
             <div class="error-message">Could not connect to this host</div>
-            <div class="error-host">{exc.host}</div>
+            <div class="error-host">{host}</div>
         </div>
     </body>
     </html>

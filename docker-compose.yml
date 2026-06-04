@@ -10,11 +10,18 @@ services:
     environment:
       - ALERT_POLL_INTERVAL=${ALERT_POLL_INTERVAL:-15}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-5}
-      - ENVIRONMENT=production
-    env_file:
-      - .env
+      - HOSTS_FILE=${HOSTS_FILE:-config/hosts.txt}
+      - NETDATA_MANAGEMENT_ENABLED=${NETDATA_MANAGEMENT_ENABLED:-false}
+      - NETDATA_MANAGEMENT_API_TOKEN_FILE=${NETDATA_MANAGEMENT_API_TOKEN_FILE:-/run/secrets/netdata_management_api_token}
     volumes:
       - ./config:/app/config:ro
+      - ./secrets:/run/secrets:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - netdata-network
@@ -31,7 +38,8 @@ services:
       - NODE_ENV=production
       - BACKEND_URL=http://netdata-portal-backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - netdata-network

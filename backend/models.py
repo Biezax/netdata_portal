@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, HttpUrl, field_validator
 
 
 class AlertSeverity(str, Enum):
@@ -47,6 +47,3 @@ class Alert(BaseModel):
     timestamp: datetime
     value: Optional[float] = None
     message: str
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}

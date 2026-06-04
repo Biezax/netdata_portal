@@ -24,7 +24,7 @@ interface Host {
 function HomeContent() {
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>(
-    (searchParams.get('view') as ViewMode) || 'hosts'
+    searchParams.get('view') === 'alerts' ? 'alerts' : 'hosts'
   );
   const [selectedHost, setSelectedHost] = useState<string | null>(searchParams.get('host'));
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -35,11 +35,15 @@ function HomeContent() {
       try {
         const response = await fetch('/api/hosts');
         const data = await response.json();
-        setHosts(data.hosts || []);
+        const nextHosts = data.hosts || [];
+        setHosts(nextHosts);
 
-        if (!selectedHost && data.hosts.length > 0) {
-          setSelectedHost(data.hosts[0].name);
-        }
+        setSelectedHost((current) => {
+          if (current && nextHosts.some((host: Host) => host.name === current)) {
+            return current;
+          }
+          return nextHosts[0]?.name || null;
+        });
       } catch (error) {
         console.error('Failed to fetch hosts:', error);
       } finally {
@@ -50,7 +54,7 @@ function HomeContent() {
     fetchHosts();
     const interval = setInterval(fetchHosts, 20000);
     return () => clearInterval(interval);
-  }, [selectedHost]);
+  }, []);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -86,7 +90,7 @@ function HomeContent() {
               onSelectHost={setSelectedHost}
             />
             {selectedHost ? (
-              <DashboardView hostname={selectedHost} />
+              <DashboardView key={selectedHost} hostname={selectedHost} />
             ) : (
               <div className="flex-1 flex items-center justify-center bg-netdata-bg rounded-2xl border border-netdata-border">
                 <ErrorPage

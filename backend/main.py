@@ -1,13 +1,14 @@
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+import httpx
 from errors import AggregatorException, error_response
 from config import config
 from proxy import proxy_request
 from alerts import alert_poller
+from notifications import get_notification_status, reset_notifications, silence_notifications
 from models import HostStatus
-from typing import Dict
-import os
+from http_client import set_http_client
 import asyncio
 import logging
 
@@ -18,40 +19,57 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-app = FastAPI(title="Netdata Multi-Instance Aggregator")
-
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-allowed_origins = ["http://localhost:3000"] if ENVIRONMENT == "development" else []
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_methods=["GET"],
-    allow_headers=["Accept", "Content-Type"],
-)
+startup_time = datetime.now(timezone.utc)
 
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info(f"Starting Netdata Aggregator with {len(config.hosts)} configured hosts")
-    await alert_poller.start()
-    asyncio.create_task(config.start_config_polling())
-    logger.info("Netdata Aggregator started successfully")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Netdata Aggregator with %s configured hosts", len(config.hosts))
+    config_task = None
+    async with httpx.AsyncClient(timeout=config.request_timeout, follow_redirects=False) as client:
+        set_http_client(client)
+        await alert_poller.start()
+        config_task = asyncio.create_task(config.start_config_polling())
+        logger.info("Netdata Aggregator started successfully")
+        try:
+            yield
+        finally:
+            await alert_poller.stop()
+            if config_task:
+                config_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await config_task
+            set_http_client(None)
+
+
+app = FastAPI(title="Netdata Multi-Instance Aggregator", lifespan=lifespan)
 
 
 @app.exception_handler(AggregatorException)
 async def aggregator_exception_handler(request: Request, exc: AggregatorException):
-    return error_response(exc)
+    wants_html = (
+        request.url.path.startswith("/api/proxy/")
+        and "text/html" in request.headers.get("accept", "")
+    )
+    return error_response(exc, html=wants_html)
 
 
 @app.get("/health")
 async def health_check():
+    host_names = {host.display_name for host in config.hosts}
+    host_statuses = alert_poller.get_host_statuses()
+    reachable_hosts = sum(
+        1
+        for hostname in host_names
+        if host_statuses.get(hostname) and host_statuses[hostname].reachable
+    )
+
     return {
         "status": "healthy",
         "version": "1.0.0",
+        "uptime_seconds": int((datetime.now(timezone.utc) - startup_time).total_seconds()),
         "configured_hosts": len(config.hosts),
-        "reachable_hosts": 0,
+        "reachable_hosts": reachable_hosts,
     }
 
 
@@ -83,7 +101,12 @@ async def get_hosts():
 @app.get("/api/alerts")
 async def get_alerts():
     alerts = alert_poller.get_alerts()
-    host_statuses = alert_poller.get_host_statuses()
+    host_names = {host.display_name for host in config.hosts}
+    host_statuses = {
+        hostname: status
+        for hostname, status in alert_poller.get_host_statuses().items()
+        if hostname in host_names
+    }
 
     alerts_data = [
         {
@@ -113,6 +136,21 @@ async def get_alerts():
         "by_severity": severity_counts,
         "unreachable_hosts": unreachable_hosts,
     }
+
+
+@app.get("/api/hosts/{hostname}/notifications")
+async def host_notification_status(hostname: str):
+    return await get_notification_status(hostname)
+
+
+@app.post("/api/hosts/{hostname}/notifications/silence")
+async def host_notification_silence(hostname: str):
+    return await silence_notifications(hostname)
+
+
+@app.post("/api/hosts/{hostname}/notifications/reset")
+async def host_notification_reset(hostname: str):
+    return await reset_notifications(hostname)
 
 
 @app.api_route("/api/proxy/{hostname}/{path:path}", methods=["GET", "HEAD", "POST"])

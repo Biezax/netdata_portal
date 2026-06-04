@@ -1,35 +1,103 @@
-import pytest
-from fastapi.testclient import TestClient
+import importlib
 import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import httpx
+import pytest
 
-os.environ["NETDATA_HOSTS"] = "http://test-host:19999"
+
+def load_app(monkeypatch, tmp_path):
+    hosts_file = tmp_path / "hosts.txt"
+    hosts_file.write_text("http://127.0.0.1:1|test-host\n")
+    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    monkeypatch.setenv("REQUEST_TIMEOUT", "1")
+
+    for module_name in ["main", "alerts", "proxy", "notifications", "config", "http_client"]:
+        sys.modules.pop(module_name, None)
+
+    return importlib.import_module("main").app
 
 
 @pytest.fixture
-def client():
-    from main import app
-    return TestClient(app)
+def app(monkeypatch, tmp_path):
+    return load_app(monkeypatch, tmp_path)
 
 
-def test_proxy_with_invalid_hostname_returns_403(client):
-    response = client.get("/api/proxy/malicious-host/v3/")
+def make_client(app):
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    )
+
+
+@pytest.mark.asyncio
+async def test_proxy_with_invalid_hostname_returns_403_json(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/proxy/malicious-host/v3/")
+
     assert response.status_code == 403
-    assert "HostNotAllowed" in response.json()["error"]
+    assert response.json()["error"] == "HostNotAllowed"
 
 
-def test_proxy_rejects_path_traversal(client):
-    response = client.get("/api/proxy/test-host/../etc/passwd")
-    assert response.status_code == 502
-    assert "Path traversal not allowed" in response.json()["detail"]
+@pytest.mark.asyncio
+async def test_proxy_rejects_path_traversal(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/proxy/test-host/%2E%2E/etc/passwd")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Path traversal not allowed"
 
 
-def test_get_hosts_returns_configured_hosts(client):
-    response = client.get("/api/hosts")
+@pytest.mark.asyncio
+async def test_proxy_redirects_dashboard_without_trailing_slash(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/proxy/test-host/v3", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/api/proxy/test-host/v3/"
+
+
+@pytest.mark.asyncio
+async def test_proxy_does_not_follow_upstream_redirects(app, monkeypatch):
+    import proxy
+
+    class UpstreamResponse:
+        status_code = 302
+        headers = {"location": "http://not-allowed.example/"}
+
+        async def aiter_bytes(self):
+            yield b""
+
+        async def aclose(self):
+            pass
+
+    class FakeClient:
+        follow_redirects = None
+        stream = None
+
+        def build_request(self, method, target_url, **kwargs):
+            return object()
+
+        async def send(self, request, stream, follow_redirects):
+            self.stream = stream
+            self.follow_redirects = follow_redirects
+            return UpstreamResponse()
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(proxy, "get_http_client", lambda: fake_client)
+
+    response = await proxy.proxy_request("test-host", "api/v1/data")
+
+    assert response.status_code == 302
+    assert fake_client.stream is True
+    assert fake_client.follow_redirects is False
+
+
+@pytest.mark.asyncio
+async def test_get_hosts_returns_configured_hosts(app):
+    async with make_client(app) as client:
+        response = await client.get("/api/hosts")
+
     assert response.status_code == 200
     data = response.json()
-    assert "hosts" in data
     assert data["total"] == 1
     assert data["hosts"][0]["name"] == "test-host"
