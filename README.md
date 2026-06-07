@@ -7,7 +7,19 @@ per host.
 
 ## Screenshots
 
+Dashboard, without the host sidebar:
+
+![Dashboard fullscreen view](docs/screenshots/dashboard-fullscreen.png)
+
+Dashboard, with the host sidebar open:
+
 ![Dashboard view](docs/screenshots/dashboard.png)
+
+Alerts, without the host sidebar:
+
+![Alerts fullscreen view](docs/screenshots/alerts-fullscreen.png)
+
+Alerts, with the host sidebar open:
 
 ![Alerts view](docs/screenshots/alerts.png)
 
