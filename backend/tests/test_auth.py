@@ -3,6 +3,7 @@ import sys
 
 import httpx
 import pytest
+from ldap3.core.exceptions import LDAPException
 
 
 def load_auth_app(monkeypatch, tmp_path):
@@ -51,15 +52,22 @@ class _FakeEntry:
         return _FakeAttr(self._attrs[key])
 
 
-def _fake_connection_factory(groups):
-    captured = {}
+def _fake_connection_factory(groups, *, group_search_matches=False, bind_error_password=None):
+    captured = {"filters": [], "attributes": [], "binds": []}
 
     class _FakeConnection:
         def __init__(self, server, user=None, password=None, **kwargs):
+            captured["binds"].append((user, password))
+            if bind_error_password is not None and password == bind_error_password:
+                raise LDAPException("invalid credentials")
             self.entries = []
 
-        def search(self, search_base, search_filter, attributes):
-            captured["filter"] = search_filter
+        def search(self, search_base, search_filter, attributes, **kwargs):
+            captured["filters"].append(search_filter)
+            captured["attributes"].append(list(attributes))
+            if search_filter.startswith("(&") and "(member=" in search_filter:
+                self.entries = [_FakeEntry({})] if group_search_matches else []
+                return
             self.entries = [_FakeEntry({"cn": ["Alice"], "memberOf": list(groups)})]
 
         def unbind(self):
@@ -85,11 +93,13 @@ async def test_username_is_escaped_in_filter(monkeypatch, tmp_path):
     user = await auth.authenticate("alice*)(uid=*", "secret")
 
     assert user is not None
+    assert captured["attributes"][0] == []
+    assert captured["binds"][1] == ("uid=alice,ou=people,dc=example,dc=com", "secret")
     # The injected * ) ( must all be escaped, leaving no raw filter metacharacters.
-    assert "\\2a" in captured["filter"]  # *
-    assert "\\28" in captured["filter"]  # (
-    assert "\\29" in captured["filter"]  # )
-    assert "*)(" not in captured["filter"]
+    assert "\\2a" in captured["filters"][0]  # *
+    assert "\\28" in captured["filters"][0]  # (
+    assert "\\29" in captured["filters"][0]  # )
+    assert "*)(" not in captured["filters"][0]
 
 
 @pytest.mark.asyncio
@@ -100,6 +110,34 @@ async def test_user_outside_required_group_is_denied(monkeypatch, tmp_path):
     monkeypatch.setattr(auth, "Connection", conn)
 
     assert await auth.authenticate("alice", "secret") is None
+
+
+@pytest.mark.asyncio
+async def test_password_is_checked_before_group_search(monkeypatch, tmp_path):
+    _, auth = load_auth_app(monkeypatch, tmp_path)
+    conn, captured = _fake_connection_factory(
+        [], group_search_matches=True, bind_error_password="bad"
+    )
+    monkeypatch.setattr(auth, "Server", lambda *a, **k: object())
+    monkeypatch.setattr(auth, "Connection", conn)
+
+    assert await auth.authenticate("alice", "bad") is None
+    assert captured["filters"] == ["(uid=alice)"]
+
+
+@pytest.mark.asyncio
+async def test_group_search_fallback_allows_freeipa_member(monkeypatch, tmp_path):
+    _, auth = load_auth_app(monkeypatch, tmp_path)
+    conn, captured = _fake_connection_factory([], group_search_matches=True)
+    monkeypatch.setattr(auth, "Server", lambda *a, **k: object())
+    monkeypatch.setattr(auth, "Connection", conn)
+
+    user = await auth.authenticate("alice", "secret")
+
+    assert user is not None
+    assert captured["filters"][-1] == (
+        "(&(cn=admins)(member=uid=alice,ou=people,dc=example,dc=com))"
+    )
 
 
 # --- Endpoint / session gate tests ---------------------------------------

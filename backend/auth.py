@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from ldap3 import AUTO_BIND_NO_TLS, AUTO_BIND_TLS_BEFORE_BIND, NONE, Connection, Server, Tls
+from ldap3 import AUTO_BIND_NO_TLS, AUTO_BIND_TLS_BEFORE_BIND, BASE, NONE, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPException
 from ldap3.utils.conv import escape_filter_chars
 
@@ -37,6 +37,58 @@ def _build_server(use_ssl: bool) -> Server:
     )
 
 
+def _entry_values(entry, attr: str) -> list[str]:
+    return [str(value) for value in entry[attr].values] if attr in entry else []
+
+
+def _entry_value(entry, attr: str, fallback: str) -> str:
+    if attr in entry and entry[attr].value:
+        return str(entry[attr].value)
+    return fallback
+
+
+def _is_required_group(groups: list[str]) -> bool:
+    required_group = config.ldap_required_group.strip().lower()
+    return required_group in {group.strip().lower() for group in groups}
+
+
+def _split_first_dn_component(dn: str) -> tuple[str, str]:
+    escaped = False
+    for index, char in enumerate(dn):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == ",":
+            return dn[:index], dn[index + 1 :]
+    return dn, ""
+
+
+def _is_member_by_group_search(conn: Connection, user_dn: str) -> bool:
+    group_dn = config.ldap_required_group.strip()
+    rdn, parent_dn = _split_first_dn_component(group_dn)
+    member_filter = f"(member={escape_filter_chars(user_dn)})"
+
+    if parent_dn and "=" in rdn:
+        attr, value = rdn.split("=", 1)
+        search_base = parent_dn
+        search_filter = (
+            f"(&({attr.strip()}={escape_filter_chars(value.strip())}){member_filter})"
+        )
+    else:
+        search_base = group_dn
+        search_filter = member_filter
+
+    conn.search(
+        search_base=search_base,
+        search_filter=search_filter,
+        attributes=[],
+    )
+    return bool(conn.entries)
+
+
 def _authenticate_sync(username: str, password: str) -> AuthUser | None:
     use_ssl = config.ldap_url.lower().startswith("ldaps://")
     auto_bind = (
@@ -44,7 +96,7 @@ def _authenticate_sync(username: str, password: str) -> AuthUser | None:
     )
     server = _build_server(use_ssl)
 
-    # Service (or anonymous) bind to look the user up by their login attribute.
+    # Service or anonymous bind is only used to resolve the user's DN.
     search_conn = Connection(
         server,
         user=config.ldap_bind_dn or None,
@@ -57,28 +109,17 @@ def _authenticate_sync(username: str, password: str) -> AuthUser | None:
         search_conn.search(
             search_base=config.ldap_user_base_dn,
             search_filter=search_filter,
-            attributes=[config.ldap_display_name_attr, config.ldap_group_attr],
+            attributes=[],
         )
         if len(search_conn.entries) != 1:
             logger.info("LDAP lookup returned %d entries", len(search_conn.entries))
             return None
         entry = search_conn.entries[0]
         user_dn = entry.entry_dn
-        groups = list(entry[config.ldap_group_attr].values) if config.ldap_group_attr in entry else []
-        display_name = (
-            str(entry[config.ldap_display_name_attr].value)
-            if config.ldap_display_name_attr in entry and entry[config.ldap_display_name_attr].value
-            else username
-        )
     finally:
         search_conn.unbind()
 
-    required_group = config.ldap_required_group.strip().lower()
-    if required_group not in {str(g).strip().lower() for g in groups}:
-        logger.info("Authenticated user is not a member of the required group")
-        return None
-
-    # Re-bind as the user to verify their password.
+    # Re-bind as the user before reading group membership.
     try:
         user_conn = Connection(
             server,
@@ -87,9 +128,24 @@ def _authenticate_sync(username: str, password: str) -> AuthUser | None:
             auto_bind=auto_bind,
             receive_timeout=config.ldap_connect_timeout,
         )
-        user_conn.unbind()
     except LDAPException:
         return None
+    try:
+        user_conn.search(
+            search_base=user_dn,
+            search_filter="(objectClass=*)",
+            search_scope=BASE,
+            attributes=[config.ldap_display_name_attr, config.ldap_group_attr],
+        )
+        entry = user_conn.entries[0] if user_conn.entries else None
+        groups = _entry_values(entry, config.ldap_group_attr) if entry else []
+        display_name = _entry_value(entry, config.ldap_display_name_attr, username) if entry else username
+
+        if not _is_required_group(groups) and not _is_member_by_group_search(user_conn, user_dn):
+            logger.info("Authenticated user is not a member of the required group")
+            return None
+    finally:
+        user_conn.unbind()
 
     return AuthUser(username=username, display_name=display_name)
 
@@ -109,7 +165,7 @@ def setup_auth(app: FastAPI) -> None:
     from starlette.middleware.sessions import SessionMiddleware
 
     if not config.ldap_bind_dn:
-        logger.warning("LDAP_BIND_DN is empty; user lookup uses an anonymous bind")
+        logger.info("LDAP_BIND_DN is empty; initial user lookup uses an anonymous bind")
     if not config.session_cookie_secure:
         logger.warning("SESSION_COOKIE_SECURE is false; enable it when serving over HTTPS")
 

@@ -114,8 +114,10 @@ SESSION_SECRET_FILE=/run/secrets/session_secret
 Notes:
 
 - Empty passwords are rejected.
-- `{username}` is escaped before LDAP search.
-- Access requires membership in `LDAP_REQUIRED_GROUP`.
+- `{username}` is escaped before the initial DN lookup.
+- Service bind is optional; when `LDAP_BIND_DN` is empty, the DN lookup uses anonymous bind.
+- The app binds as the found user before checking group membership.
+- Access requires membership in `LDAP_REQUIRED_GROUP`; if `memberOf` is unavailable, the app falls back to a group search with `member=<user_dn>`.
 - Use `ldaps://` or `LDAP_START_TLS=true`.
 - Set `SESSION_COOKIE_SECURE=true` behind HTTPS.
 - In production, remove the backend `8000:8000` port mapping and expose only the frontend.
