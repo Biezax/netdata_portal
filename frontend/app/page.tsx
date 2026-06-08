@@ -135,7 +135,7 @@ function HomeContent() {
         const response = await fetchJson('/api/hosts');
         if (!response.ok) return;
         const data = await response.json();
-        const nextHosts = data.hosts || [];
+        const nextHosts = sortHosts(data.hosts || []);
         if (stopped) return;
 
         setHosts(nextHosts);
@@ -409,6 +409,30 @@ function syncNotificationHosts(
   }
 
   return changed ? next : current;
+}
+
+function sortHosts(hosts: Host[]) {
+  return [...hosts].sort(compareHosts);
+}
+
+function compareHosts(a: Host, b: Host) {
+  const groupDiff = getHostSortGroup(a) - getHostSortGroup(b);
+  if (groupDiff !== 0) return groupDiff;
+
+  const criticalDiff = (b.status.critical_count ?? 0) - (a.status.critical_count ?? 0);
+  if (criticalDiff !== 0) return criticalDiff;
+
+  const warningDiff = (b.status.warning_count ?? 0) - (a.status.warning_count ?? 0);
+  if (warningDiff !== 0) return warningDiff;
+
+  return a.name.localeCompare(b.name, undefined, { numeric: true });
+}
+
+function getHostSortGroup(host: Host) {
+  if (!host.status.reachable) return 3;
+  if ((host.status.critical_count ?? 0) > 0) return 0;
+  if ((host.status.warning_count ?? 0) > 0) return 1;
+  return 2;
 }
 
 function pickMap<T>(current: Record<string, T>, allowed: Set<string>) {
