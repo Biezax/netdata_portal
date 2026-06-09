@@ -1,5 +1,6 @@
 import importlib
 import sys
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -80,6 +81,7 @@ async def test_notifications_list_returns_raw_and_parsed_status(monkeypatch, tmp
     app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
     import notifications
 
+    seed_host_status(reachable=True)
     raw = '{"all": true, "type": "SILENCE", "silencers": []}'
     fake_client = FakeManagementClient([raw])
     monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
@@ -118,6 +120,7 @@ async def test_notifications_list_parses_non_default_active_states(
     app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
     import notifications
 
+    seed_host_status(reachable=True)
     fake_client = FakeManagementClient([raw])
     monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
 
@@ -138,6 +141,7 @@ async def test_notifications_maps_upstream_auth_errors_to_management_forbidden(
     app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
     import notifications
 
+    seed_host_status(reachable=True)
     request = httpx.Request("GET", "http://127.0.0.1:19999/api/v1/manage/health")
     fake_client = FakeManagementClient([httpx.Response(status_code, request=request)])
     monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
@@ -149,6 +153,94 @@ async def test_notifications_maps_upstream_auth_errors_to_management_forbidden(
     data = response.json()
     assert data["error"] == "ManagementForbidden"
     assert "management API token" in data["detail"]
+
+
+def seed_host_status(reachable):
+    import alerts
+    from models import HostStatus
+
+    alerts.alert_poller.host_statuses["test-host"] = HostStatus(
+        hostname="test-host",
+        reachable=reachable,
+        last_check=datetime.now(timezone.utc),
+        alert_count=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_notifications_unreachable_host_short_circuits(monkeypatch, tmp_path):
+    app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
+    import notifications
+
+    seed_host_status(reachable=False)
+    fake_client = FakeManagementClient([])
+    monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
+
+    async with make_client(app) as client:
+        response = await client.get("/api/hosts/test-host/notifications")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "state": "unavailable",
+        "silenced": None,
+        "raw": "",
+        "message": "Host is unreachable",
+        "retryable": True,
+    }
+    assert fake_client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_notifications_unchecked_host_short_circuits(monkeypatch, tmp_path):
+    app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
+    import notifications
+
+    fake_client = FakeManagementClient([])
+    monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
+
+    async with make_client(app) as client:
+        response = await client.get("/api/hosts/test-host/notifications")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "state": "unknown",
+        "silenced": None,
+        "raw": "",
+        "message": "Host reachability is not checked yet",
+        "retryable": True,
+    }
+    assert fake_client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_notifications_management_disabled_wins_over_unreachable(monkeypatch, tmp_path):
+    app = load_app(monkeypatch, tmp_path)
+
+    seed_host_status(reachable=False)
+
+    async with make_client(app) as client:
+        response = await client.get("/api/hosts/test-host/notifications")
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "ManagementDisabled"
+
+
+@pytest.mark.asyncio
+async def test_notifications_reachable_host_uses_live_status(monkeypatch, tmp_path):
+    app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
+    import notifications
+
+    seed_host_status(reachable=True)
+    raw = '{"all": false, "type": null, "silencers": []}'
+    fake_client = FakeManagementClient([raw])
+    monkeypatch.setattr(notifications, "get_http_client", lambda: fake_client)
+
+    async with make_client(app) as client:
+        response = await client.get("/api/hosts/test-host/notifications")
+
+    assert response.status_code == 200
+    assert response.json() == {"state": "enabled", "silenced": False, "raw": raw}
+    assert len(fake_client.calls) == 1
 
 
 @pytest.mark.asyncio

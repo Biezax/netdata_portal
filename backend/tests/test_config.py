@@ -4,13 +4,24 @@ import sys
 import pytest
 
 
+def set_base_config_env(monkeypatch, hosts_file):
+    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    monkeypatch.setenv("ALERT_POLL_INTERVAL", "15")
+    monkeypatch.setenv("REQUEST_TIMEOUT", "5")
+    monkeypatch.setenv("CONNECT_TIMEOUT", "2")
+    monkeypatch.setenv("ALERT_POLL_CONCURRENCY", "10")
+    monkeypatch.setenv("UNREACHABLE_POLL_INTERVAL", "60")
+    monkeypatch.setenv("NETDATA_MANAGEMENT_ENABLED", "false")
+    monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN", "")
+    monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN_FILE", "")
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+
+
 @pytest.fixture
 def config_module(monkeypatch, tmp_path):
     hosts_file = tmp_path / "hosts.txt"
     hosts_file.write_text("http://127.0.0.1:19999\n")
-    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
-    monkeypatch.delenv("NETDATA_MANAGEMENT_API_TOKEN", raising=False)
-    monkeypatch.delenv("NETDATA_MANAGEMENT_API_TOKEN_FILE", raising=False)
+    set_base_config_env(monkeypatch, hosts_file)
 
     sys.modules.pop("config", None)
     module = importlib.import_module("config")
@@ -23,6 +34,9 @@ def test_config_loads_from_hosts_file(config_module):
     assert module.config.hosts[0].display_name == "127.0.0.1:19999"
     assert module.config.alert_poll_interval == 15
     assert module.config.request_timeout == 5
+    assert module.config.connect_timeout == 2.0
+    assert module.config.alert_poll_concurrency == 10
+    assert module.config.unreachable_poll_interval == 60
     assert module.config.netdata_management_available is False
 
 
@@ -30,7 +44,7 @@ def test_config_loads_from_hosts_file(config_module):
 def test_config_parses_management_enabled_true_values(monkeypatch, tmp_path, value):
     hosts_file = tmp_path / "hosts.txt"
     hosts_file.write_text("http://127.0.0.1:19999\n")
-    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    set_base_config_env(monkeypatch, hosts_file)
     monkeypatch.setenv("NETDATA_MANAGEMENT_ENABLED", value)
     monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN", "secret-token")
 
@@ -43,10 +57,9 @@ def test_config_parses_management_enabled_true_values(monkeypatch, tmp_path, val
 def test_config_requires_management_token(monkeypatch, tmp_path):
     hosts_file = tmp_path / "hosts.txt"
     hosts_file.write_text("http://127.0.0.1:19999\n")
-    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    set_base_config_env(monkeypatch, hosts_file)
     monkeypatch.setenv("NETDATA_MANAGEMENT_ENABLED", "true")
     monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN", "")
-    monkeypatch.delenv("NETDATA_MANAGEMENT_API_TOKEN_FILE", raising=False)
 
     sys.modules.pop("config", None)
     module = importlib.import_module("config")
@@ -59,7 +72,7 @@ def test_config_reads_management_token_from_file(monkeypatch, tmp_path):
     token_file = tmp_path / "token"
     hosts_file.write_text("http://127.0.0.1:19999\n")
     token_file.write_text("secret-token\n")
-    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    set_base_config_env(monkeypatch, hosts_file)
     monkeypatch.setenv("NETDATA_MANAGEMENT_ENABLED", "true")
     monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN", "")
     monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN_FILE", str(token_file))
@@ -88,7 +101,7 @@ def test_config_rejects_duplicate_display_names(monkeypatch, tmp_path):
         "http://127.0.0.1:19999|same\n"
         "http://127.0.0.1:29999|same\n"
     )
-    monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
+    set_base_config_env(monkeypatch, hosts_file)
 
     sys.modules.pop("config", None)
     with pytest.raises(ValueError, match="Duplicate host display name"):

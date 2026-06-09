@@ -3,6 +3,7 @@ from typing import Any
 
 import httpx
 
+from alerts import alert_poller
 from config import config
 from errors import (
     AggregatorException,
@@ -22,6 +23,25 @@ RESET_CMD = "RESET"
 async def get_notification_status(hostname: str) -> dict[str, Any]:
     host = _get_host(hostname)
     _ensure_management_available(hostname)
+    # Unknown/unreachable hosts answer from the alert poller cache instead of
+    # spending a live management request on hosts that are not ready to answer.
+    status = alert_poller.host_statuses.get(hostname)
+    if status is None:
+        return {
+            "state": "unknown",
+            "silenced": None,
+            "raw": "",
+            "message": "Host reachability is not checked yet",
+            "retryable": True,
+        }
+    if not status.reachable:
+        return {
+            "state": "unavailable",
+            "silenced": None,
+            "raw": "",
+            "message": "Host is unreachable",
+            "retryable": True,
+        }
     raw = await _call_management_api(hostname, str(host.url), LIST_CMD)
     return _parse_list_response(raw)
 

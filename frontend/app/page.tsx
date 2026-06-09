@@ -82,8 +82,10 @@ async function parseNotificationResponse(response: Response): Promise<HostNotifi
   const state = isNotificationState(data.state) ? data.state : 'unknown';
   return {
     state,
-    message: state === 'unknown' ? 'Notification status is unknown' : null,
-    retryable: false,
+    message: typeof data.message === 'string'
+      ? data.message
+      : state === 'unknown' ? 'Notification status is unknown' : null,
+    retryable: data.retryable === true,
   };
 }
 
@@ -117,6 +119,7 @@ function HomeContent() {
   const notificationInFlightRef = useRef<Record<string, boolean>>({});
   const notificationBusyRef = useRef<Record<string, boolean>>({});
   const notificationVersionRef = useRef<Record<string, number>>({});
+  const hostReachabilityRef = useRef<Record<string, boolean | undefined>>({});
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<string | null>(null);
 
@@ -145,6 +148,12 @@ function HomeContent() {
         notificationInFlightRef.current = pickMap(notificationInFlightRef.current, nextHostnameSet);
         notificationBusyRef.current = pickMap(notificationBusyRef.current, nextHostnameSet);
         notificationVersionRef.current = pickMap(notificationVersionRef.current, nextHostnameSet);
+        hostReachabilityRef.current = syncHostReachability(
+          hostReachabilityRef.current,
+          nextHosts,
+          notificationRequestedRef,
+          notificationVersionRef
+        );
         setNotificationBusy((current) => pickMap(current, nextHostnameSet));
         setNotificationStatuses((current) => syncNotificationHosts(current, nextHostnames));
 
@@ -204,10 +213,24 @@ function HomeContent() {
         const next = { ...current };
         for (const [hostname, version, status] of statuses) {
           delete notificationInFlightRef.current[hostname];
-          if (
-            !notificationBusyRef.current[hostname] &&
-            version === (notificationVersionRef.current[hostname] || 0)
-          ) {
+          if (notificationBusyRef.current[hostname]) {
+            continue;
+          }
+
+          if (hostReachabilityRef.current[hostname] === false) {
+            const nextStatus = status.state === 'unavailable' && status.retryable === false
+              ? status
+              : hostUnreachableNotificationStatus();
+            next[hostname] = nextStatus;
+            if (nextStatus.retryable) {
+              delete notificationRequestedRef.current[hostname];
+            } else {
+              notificationRequestedRef.current[hostname] = true;
+            }
+            continue;
+          }
+
+          if (version === (notificationVersionRef.current[hostname] || 0)) {
             next[hostname] = status;
             if (status.retryable) {
               delete notificationRequestedRef.current[hostname];
@@ -242,9 +265,21 @@ function HomeContent() {
         const status = await fetchNotificationStatus(selectedHost);
         if (
           stopped ||
-          notificationBusyRef.current[selectedHost] ||
-          version !== (notificationVersionRef.current[selectedHost] || 0)
+          notificationBusyRef.current[selectedHost]
         ) {
+          return;
+        }
+
+        if (hostReachabilityRef.current[selectedHost] === false) {
+          const nextStatus = status.state === 'unavailable' && status.retryable === false
+            ? status
+            : hostUnreachableNotificationStatus();
+          setNotificationStatuses((current) => ({ ...current, [selectedHost]: nextStatus }));
+          updateNotificationRequested(selectedHost, nextStatus);
+          return;
+        }
+
+        if (version !== (notificationVersionRef.current[selectedHost] || 0)) {
           return;
         }
 
@@ -413,6 +448,44 @@ function syncNotificationHosts(
 
 function sortHosts(hosts: Host[]) {
   return [...hosts].sort(compareHosts);
+}
+
+function syncHostReachability(
+  current: Record<string, boolean | undefined>,
+  hosts: Host[],
+  notificationRequestedRef: { current: Record<string, boolean> },
+  notificationVersionRef: { current: Record<string, number> }
+) {
+  const next: Record<string, boolean | undefined> = {};
+  let nextVersions = notificationVersionRef.current;
+
+  for (const host of hosts) {
+    const reachable = getKnownHostReachability(host);
+    next[host.name] = reachable;
+
+    if (reachable !== undefined && current[host.name] !== reachable) {
+      delete notificationRequestedRef.current[host.name];
+      nextVersions = {
+        ...nextVersions,
+        [host.name]: (nextVersions[host.name] || 0) + 1,
+      };
+    }
+  }
+
+  notificationVersionRef.current = nextVersions;
+  return next;
+}
+
+function getKnownHostReachability(host: Host) {
+  return host.status.last_check === null ? undefined : host.status.reachable;
+}
+
+function hostUnreachableNotificationStatus(): HostNotificationStatus {
+  return {
+    state: 'unavailable',
+    message: 'Host is unreachable',
+    retryable: true,
+  };
 }
 
 function compareHosts(a: Host, b: Host) {

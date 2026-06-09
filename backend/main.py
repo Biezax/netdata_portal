@@ -23,7 +23,8 @@ startup_time = datetime.now(timezone.utc)
 async def lifespan(app: FastAPI):
     logger.info("Starting Netdata Aggregator with %s configured hosts", len(config.hosts))
     config_task = None
-    async with httpx.AsyncClient(timeout=config.request_timeout, follow_redirects=False) as client:
+    timeout = httpx.Timeout(config.request_timeout, connect=config.connect_timeout)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
         set_http_client(client)
         await alert_poller.start()
         config_task = asyncio.create_task(config.start_config_polling())

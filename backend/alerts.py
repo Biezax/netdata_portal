@@ -39,7 +39,19 @@ class AlertPoller:
             if hostname in current_hosts
         }
 
-        tasks = [self._fetch_host_alerts(host) for host in config.hosts]
+        now = datetime.now(timezone.utc)
+        hosts_to_poll = [host for host in config.hosts if self._should_poll(host.display_name, now)]
+
+        # Cap concurrent fetches: each dead host pins a connect attempt and a
+        # getaddrinfo executor thread, so unbounded gather over a dirty
+        # inventory starves DNS/connections for healthy hosts too.
+        semaphore = asyncio.Semaphore(config.alert_poll_concurrency)
+
+        async def fetch_limited(host):
+            async with semaphore:
+                return await self._fetch_host_alerts(host)
+
+        tasks = [fetch_limited(host) for host in hosts_to_poll]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_alerts = []
@@ -48,6 +60,15 @@ class AlertPoller:
                 all_alerts.extend(result)
 
         self.alerts = self._sort_alerts(all_alerts)
+
+    def _should_poll(self, hostname: str, now: datetime) -> bool:
+        # Unreachable hosts keep their stale status and are retried at the
+        # slower unreachable_poll_interval; _mark_unreachable refreshes
+        # last_check on every real attempt, so the backoff window slides.
+        status = self.host_statuses.get(hostname)
+        if status is None or status.reachable or status.last_check is None:
+            return True
+        return (now - status.last_check).total_seconds() >= config.unreachable_poll_interval
 
     async def _fetch_host_alerts(self, host) -> List[Alert]:
         hostname = host.display_name

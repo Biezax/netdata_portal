@@ -80,6 +80,9 @@ Main variables are in `.env.example`:
 HOSTS_FILE=config/hosts.txt
 ALERT_POLL_INTERVAL=15
 REQUEST_TIMEOUT=5
+CONNECT_TIMEOUT=2              # seconds to establish a connection to a host
+ALERT_POLL_CONCURRENCY=10      # max hosts polled at once
+UNREACHABLE_POLL_INTERVAL=60   # seconds between retries of an unreachable host
 ```
 
 Notification management is disabled by default. Enable it only on the backend:
@@ -92,6 +95,25 @@ NETDATA_MANAGEMENT_API_TOKEN_FILE=/run/secrets/netdata_management_api_token
 For Compose, put the real token in `secrets/netdata_management_api_token` and
 keep `./secrets` mounted read-only. `NETDATA_MANAGEMENT_API_TOKEN` also works
 for local non-container runs, but file-based secrets are preferred.
+
+## Partial Availability
+
+Netdata on a listed host is optional: the portal tolerates inventories where
+some hosts are down, lack Netdata, or have broken DNS. Such hosts are shown in
+red, their notification bell reports "Host is unreachable", and they are
+re-checked only every `UNREACHABLE_POLL_INTERVAL` seconds — a recovered host
+shows up again within ~1–2 minutes. Dead hosts never slow down dashboards of
+healthy ones.
+
+For full functionality a host needs:
+
+- Netdata port reachable from the portal backend at the URL in `hosts.txt`.
+- `allow dashboard from` in `netdata.conf` covering the portal backend IP.
+- For silence/reset: the management API token and `allow management from`
+  covering the portal backend IP.
+- If inventory DNS is unreliable, put the IP address directly in `hosts.txt`
+  (`http://10.0.0.5:19999|name`) — unresolvable names are the most expensive
+  failure mode.
 
 ## Authentication
 

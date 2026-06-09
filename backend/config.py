@@ -62,6 +62,9 @@ class Config:
         self.hosts: List[HostConfig] = []
         self.alert_poll_interval = int(os.getenv("ALERT_POLL_INTERVAL", "15"))
         self.request_timeout = int(os.getenv("REQUEST_TIMEOUT", "5"))
+        self.connect_timeout = float(os.getenv("CONNECT_TIMEOUT", "2"))
+        self.alert_poll_concurrency = max(1, int(os.getenv("ALERT_POLL_CONCURRENCY", "10")))
+        self.unreachable_poll_interval = int(os.getenv("UNREACHABLE_POLL_INTERVAL", "60"))
         self.port = int(os.getenv("PORT", "8000"))
         self.netdata_management_enabled = _parse_bool(
             os.getenv("NETDATA_MANAGEMENT_ENABLED", "false")
