@@ -11,6 +11,7 @@ def load_app(monkeypatch, tmp_path, enabled=False, token=""):
     hosts_file.write_text("http://127.0.0.1:19999|test-host\n")
     monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
     monkeypatch.setenv("REQUEST_TIMEOUT", "1")
+    monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setenv("NETDATA_MANAGEMENT_ENABLED", "true" if enabled else "false")
     monkeypatch.setenv("NETDATA_MANAGEMENT_API_TOKEN", token)
     monkeypatch.delenv("NETDATA_MANAGEMENT_API_TOKEN_FILE", raising=False)
@@ -132,11 +133,15 @@ async def test_notifications_list_parses_non_default_active_states(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [401, 403])
-async def test_notifications_maps_upstream_auth_errors_to_management_forbidden(
+@pytest.mark.parametrize(
+    "status_code, detail_marker",
+    [(401, "management API token"), (403, "management API token"), (404, "HTTP 404"), (451, "HTTP 451")],
+)
+async def test_notifications_maps_upstream_client_errors_to_management_forbidden(
     monkeypatch,
     tmp_path,
     status_code,
+    detail_marker,
 ):
     app = load_app(monkeypatch, tmp_path, enabled=True, token="secret-token")
     import notifications
@@ -152,7 +157,7 @@ async def test_notifications_maps_upstream_auth_errors_to_management_forbidden(
     assert response.status_code == 403
     data = response.json()
     assert data["error"] == "ManagementForbidden"
-    assert "management API token" in data["detail"]
+    assert detail_marker in data["detail"]
 
 
 def seed_host_status(reachable):

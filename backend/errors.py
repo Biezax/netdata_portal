@@ -43,13 +43,20 @@ class BadGatewayError(AggregatorException):
 
 class ManagementForbiddenError(AggregatorException):
     def __init__(self, hostname: str, status_code: int):
+        if status_code in (401, 403):
+            detail = (
+                "Netdata management API rejected the request. Check the management "
+                "API token and Netdata allow management from settings."
+            )
+        else:
+            detail = (
+                f"Netdata health management is unavailable on this host (HTTP {status_code}). "
+                "The host may not expose the management API."
+            )
         super().__init__(
             status_code=403,
             error="ManagementForbidden",
-            detail=(
-                "Netdata management API rejected the request. Check the management "
-                "API token and Netdata allow management from settings."
-            ),
+            detail=detail,
             host=hostname,
         )
         self.upstream_status_code = status_code

@@ -11,6 +11,7 @@ def load_app(monkeypatch, tmp_path):
     hosts_file.write_text("http://127.0.0.1:1|test-host\n")
     monkeypatch.setenv("HOSTS_FILE", str(hosts_file))
     monkeypatch.setenv("REQUEST_TIMEOUT", "1")
+    monkeypatch.setenv("AUTH_ENABLED", "false")
 
     for module_name in ["main", "alerts", "proxy", "notifications", "config", "http_client"]:
         sys.modules.pop(module_name, None)

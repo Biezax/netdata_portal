@@ -92,9 +92,13 @@ async def _call_management_api(hostname: str, host_url: str, command: str) -> st
     except httpx.TimeoutException:
         raise GatewayTimeoutError(hostname)
     except httpx.HTTPStatusError as e:
-        if e.response.status_code in {401, 403}:
-            raise ManagementForbiddenError(hostname, e.response.status_code)
-        raise BadGatewayError(hostname, f"management API returned {e.response.status_code}")
+        status_code = e.response.status_code
+        # 4xx from the management API are permission/availability problems
+        # (403 bad token, 451/404 when the host doesn't expose health management);
+        # they won't change on retry, so surface them as terminal forbidden.
+        if 400 <= status_code < 500 and status_code not in {408, 429}:
+            raise ManagementForbiddenError(hostname, status_code)
+        raise BadGatewayError(hostname, f"management API returned {status_code}")
     except httpx.HTTPError as e:
         raise BadGatewayError(hostname, str(e))
 
