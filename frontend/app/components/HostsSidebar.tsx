@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Bell, BellOff, CircleHelp, LoaderCircle, LogOut, Menu, X } from 'lucide-react';
+import BrandMark from './BrandMark';
 import TabSwitcher from './TabSwitcher';
 
 interface Host {
@@ -108,9 +109,7 @@ export default function HostsSidebar({
       } ${searchFocused ? 'md:translate-x-0' : 'md:-translate-x-[312px] md:hover:translate-x-0'}`}>
         <div className="absolute right-1 top-1/2 hidden h-14 w-1 -translate-y-1/2 rounded-full bg-netdata-accent/70 group-hover/sidebar:bg-netdata-accent md:block" />
         <div className="mb-3 flex items-center gap-2">
-          <div className="min-w-0 flex-1 rounded-full border border-netdata-border bg-netdata-panel-bg/70 p-1">
-            <TabSwitcher activeTab={viewMode} onTabChange={changeViewMode} />
-          </div>
+          <BrandMark size="md" className="min-w-0 flex-1" />
           <button
             type="button"
             aria-label="Close navigation"
@@ -122,6 +121,12 @@ export default function HostsSidebar({
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
+        </div>
+
+        <div className="mb-3 flex items-center gap-2">
+          <div className="min-w-0 flex-1 rounded-full border border-netdata-border bg-netdata-panel-bg/70 p-1">
+            <TabSwitcher activeTab={viewMode} onTabChange={changeViewMode} />
+          </div>
         </div>
 
         <div className="mb-2 text-sm font-medium text-netdata-text-muted">Hosts</div>

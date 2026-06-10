@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Netdata Multi-Instance Aggregator',
+  title: 'Netdata Portal',
   description: 'Monitor multiple Netdata instances from a unified interface',
 };
 

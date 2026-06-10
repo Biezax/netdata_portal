@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import BrandMark from '../components/BrandMark';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -36,7 +37,7 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-80 space-y-4 rounded-2xl border border-netdata-border bg-netdata-bg-panel p-6"
       >
-        <h1 className="text-xl font-bold text-netdata-accent">Netdata Portal</h1>
+        <BrandMark size="lg" />
         <input
           type="text"
           placeholder="Username"
